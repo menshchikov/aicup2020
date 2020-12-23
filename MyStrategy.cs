@@ -6,16 +6,11 @@ using Action = Aicup2020.Model.Action;
 
 namespace Aicup2020
 {
-    // public struct repareReestr
-    // {
-    //     public int builderId;
-    //     public int healedId;
-    //     public bool status;
-    // }
+
     public class MyStrategy
     {
         // private bool _isAccumulateResources;
-        const bool IS_DEBUG = false;
+        const bool IS_DEBUG = true;
         private int _myIndex = -1;
         private int _mapSize = 1;
 
@@ -25,9 +20,14 @@ namespace Aicup2020
         EntityType[] unitEntityTypes = {EntityType.BuilderUnit, EntityType.MeleeUnit, EntityType.RangedUnit};
 
         const int GROUP_MIN = 20;
+
         const int MAX_TURRET_REMOTENESS = 6;
+
         Vec2Int bunchPosition1 = new Vec2Int(7, 20);
         Vec2Int bunchPosition2 = new Vec2Int(20, 7);
+        // Vec2Int bunchPosition1 = new Vec2Int(15, 15);
+        // Vec2Int bunchPosition2 = new Vec2Int(15, 15);
+
         const int MIN_BUILDERS = 15;
         Entity[] scouts = new Entity[3];
         private bool[] scoutStats = new bool[3];
@@ -48,14 +48,12 @@ namespace Aicup2020
         private IDictionary<EntityType, EntityProperties> _props;
         private IEnumerable<Entity> _enemyEntities;
         private Player[] _players;
+
         private Entity[] _playerViewEntities;
-        // private bool _hasFactoryOrders = false;
-        Dictionary<int,bool> _baseProductionStatuses = new Dictionary<int, bool>();
+        
+        Dictionary<int, bool> _baseProductionStatuses = new Dictionary<int, bool>();
         const float HOUSE_PRODUCTION_MODIFIER = 0.02f; // HPM х population = houseCount to build in 1 tick 
         const float BUILDERS_MULTIPLIER = 1.2f; // BM * soldiers.Count = max_builders limit
-
-        // builderId - healedId reestr
-        // Dictionary<int,int> _repairReestr = new Dictionary<int, int>();
 
         public Action GetAction(PlayerView playerView, DebugInterface debugInterface)
         {
@@ -75,7 +73,7 @@ namespace Aicup2020
             _turrets = _myEntities.Where(e => e.EntityType == EntityType.Turret);
             _enemyEntities = _playerViewEntities.Where(entity => entity.PlayerId > 0 && entity.PlayerId != myId);
             _availableBuilders = new List<Entity>();
-            
+
             InitConstsFromPlayerVew(playerView); // init consts once
 
             Action result = new Action(new System.Collections.Generic.Dictionary<int, Model.EntityAction>());
@@ -88,9 +86,6 @@ namespace Aicup2020
 
             // soldiers orders
             SetSoldiersOrders(result);
-
-            // repair buildings
-            RepairBuildings(result);
 
             // build units
             BuildUnits(result);
@@ -133,24 +128,15 @@ namespace Aicup2020
 
         private void BuildUnits(Action result)
         {
-            // if (_hasFactoryOrders)
-            // {
-            //     return;
-            // }
-            // var hasAllBases = _bases.FirstOrDefault(b => b.EntityType == EntityType.MeleeBase).Id > 0
-            //                   && _bases.FirstOrDefault(b => b.EntityType == EntityType.RangedBase).Id > 0;
-            // int delta = _soldiers.Count(s => s.EntityType == EntityType.MeleeUnit) -
-            //             _soldiers.Count(s => s.EntityType == EntityType.RangedUnit);
+
             foreach (var unitBase in _bases)
             {
-                // add base to prodaction statuses dict
+                // add base to production statuses dict
                 if (!_baseProductionStatuses.ContainsKey(unitBase.Id))
                 {
                     _baseProductionStatuses.Add(unitBase.Id, false);
                 }
-
-                // var isBuildingEnabled = _baseProductionStatuses[unitBase.Id];
-                // var buildingProps = _props[unitBase.EntityType];
+                
                 switch (unitBase.EntityType)
                 {
                     case EntityType.BuilderBase:
@@ -164,6 +150,7 @@ namespace Aicup2020
                         {
                             StartProduction(result, unitBase);
                         }
+
                         break;
                     }
                     case EntityType.MeleeBase:
@@ -177,44 +164,7 @@ namespace Aicup2020
                         break;
                     }
                 }
-                
-                // prevent too many builders (more than 1.2x soldiers)
-                // if (unitBase.EntityType == EntityType.BuilderBase
-                //     && _builders.Count() > MIN_BUILDERS
-                //     && _builders.Count() > _soldiers.Count() + MIN_BUILDERS)
-                // {
-                //     result.EntityActions[unitBase.Id] = new EntityAction(null, null, null, null);
-                //     continue;
-                // }
-
-                //prevent disbalance melee/ranged ~ +- 2
-                // if (unitBase.EntityType == EntityType.MeleeBase && hasAllBases && delta > 1)
-                // {
-                //     result.EntityActions[unitBase.Id] = new EntityAction(null, null, null, null);
-                //     continue;
-                // }
-                //
-                // if (unitBase.EntityType == EntityType.RangedBase && hasAllBases && delta < -1)
-                // {
-                //     result.EntityActions[unitBase.Id] = new EntityAction(null, null, null, null);
-                //     continue;
-                // }
-
-                // var position = GetPositionToOut(building);
-                // var position = new Vec2Int(unitBase.Position.X + _props[unitBase.EntityType].Size,
-                //     unitBase.Position.Y + _props[unitBase.EntityType].Size - 1);
-                // result.EntityActions[unitBase.Id] = new EntityAction(
-                //     null,
-                //     new BuildAction(
-                //         buildingProps.Build.Value.Options[0],
-                //         position
-                //     ),
-                //     null,
-                //     null
-                // );
             }
-
-            // _hasFactoryOrders = true;
         }
 
         private void StopProduction(Action result, Entity unitBase)
@@ -225,58 +175,31 @@ namespace Aicup2020
                 _baseProductionStatuses[unitBase.Id] = false;
             }
         }
-        
+
         private void StartProduction(Action result, Entity unitBase)
         {
-            if (_baseProductionStatuses[unitBase.Id] == false)
-            {
-                var position = new Vec2Int(unitBase.Position.X + _props[unitBase.EntityType].Size,
-                    unitBase.Position.Y + _props[unitBase.EntityType].Size - 1);
-                result.EntityActions[unitBase.Id] = new EntityAction(
-                    null,
-                    new BuildAction(
-                        _props[unitBase.EntityType].Build.Value.Options[0],
-                        position
-                    ),
-                    null,
-                    null
-                );
-                _baseProductionStatuses[unitBase.Id] = true;
-            }
+            // if (_baseProductionStatuses[unitBase.Id] == false)
+            // {
+            // var position = new Vec2Int(unitBase.Position.X + _props[unitBase.EntityType].Size,
+            //     unitBase.Position.Y + _props[unitBase.EntityType].Size - 1);
+            // var size = _props[unitBase.EntityType].Size;
+            Vec2Int position = GetPositionToOut(unitBase);
+            result.EntityActions[unitBase.Id] = new EntityAction(
+                null,
+                new BuildAction(
+                    _props[unitBase.EntityType].Build.Value.Options[0],
+                    position
+                ),
+                null,
+                null
+            );
+            _baseProductionStatuses[unitBase.Id] = true;
+            // }
         }
+
 
         private Vec2Int GetPositionToOut(Entity building)
         {
-            // var pos = new Vec2Int(building.Position.X + _props[building.EntityType].Size,
-            //     building.Position.Y + _props[building.EntityType].Size);
-            //
-            // var count = 0;
-            // while (count < _props[building.EntityType].Size)
-            // {
-            //     pos.X += 1;
-            //     if (IsPositionClearToBuild(pos, size))
-            //         return pos;
-            //     count += 1;
-            // }
-            //
-            // for (var j = 0; j < 4; j++)
-            // {
-            //     for (var i = 0; i < _props[building.EntityType].Size; i++)
-            //     {
-            //         result.Y -= 1;
-            //         var isPositionUsed =
-            //             _soldiers.FirstOrDefault(s => s.Position.X == result.X && s.Position.Y == result.Y).Id > 0
-            //             || _builders.FirstOrDefault(s => s.Position.X == result.X && s.Position.Y == result.Y).Id > 0;
-            //         if (!isPositionUsed)
-            //         {
-            //             return result;
-            //         }
-            //     }
-            //     
-            // }
-            //
-            // return result;
-
             var size = _props[building.EntityType].Size;
             var pos = new Vec2Int(building.Position.X + size, building.Position.Y + size);
             // top, right - left
@@ -284,8 +207,8 @@ namespace Aicup2020
             while (count < size)
             {
                 pos.X -= 1;
-                if (_soldiers.FirstOrDefault(s => s.Position.X == pos.X && s.Position.Y == pos.Y).Id == 0
-                    && _builders.FirstOrDefault(s => s.Position.X == pos.X && s.Position.Y == pos.Y).Id == 0)
+                if (!_playerViewEntities.Any(s => s.Position.X == pos.X && s.Position.Y == pos.Y))
+
                     return pos;
                 count += 1;
             }
@@ -297,8 +220,8 @@ namespace Aicup2020
             while (count < size)
             {
                 pos.Y -= 1;
-                if (_soldiers.FirstOrDefault(s => s.Position.X == pos.X && s.Position.Y == pos.Y).Id == 0
-                    && _builders.FirstOrDefault(s => s.Position.X == pos.X && s.Position.Y == pos.Y).Id == 0)
+                if (!_playerViewEntities.Any(s => s.Position.X == pos.X && s.Position.Y == pos.Y))
+
                     return pos;
                 count += 1;
             }
@@ -310,8 +233,8 @@ namespace Aicup2020
             while (count < size)
             {
                 pos.Y -= 1;
-                if (_soldiers.FirstOrDefault(s => s.Position.X == pos.X && s.Position.Y == pos.Y).Id == 0
-                    && _builders.FirstOrDefault(s => s.Position.X == pos.X && s.Position.Y == pos.Y).Id == 0)
+                if (!_playerViewEntities.Any(s => s.Position.X == pos.X && s.Position.Y == pos.Y))
+
                     return pos;
                 count += 1;
             }
@@ -323,14 +246,15 @@ namespace Aicup2020
             while (count < size)
             {
                 pos.X -= 1;
-                if (_soldiers.FirstOrDefault(s => s.Position.X == pos.X && s.Position.Y == pos.Y).Id == 0
-                    && _builders.FirstOrDefault(s => s.Position.X == pos.X && s.Position.Y == pos.Y).Id == 0)
+                if (!_playerViewEntities.Any(s => s.Position.X == pos.X && s.Position.Y == pos.Y))
+
                     return pos;
                 count += 1;
             }
 
             return new Vec2Int(0, 0);
         }
+
 
         private void SetSoldiersOrders(Action result)
         {
@@ -494,14 +418,13 @@ namespace Aicup2020
             int unitsCount = _soldiers.Count() + _builders.Count();
             int plan = 0;
             int buildHouseCount = 0;
-            // var isBuildHouse = unitsCount >= popAvailable &&
-            //                    _players[_myIndex].Resource >= _props[EntityType.House].InitialCost;
             if (unitsCount >= popAvailable &&
                 _players[_myIndex].Resource >= _props[EntityType.House].InitialCost)
             {
                 buildHouseCount = 1 + Convert.ToInt32(Math.Floor(unitsCount * HOUSE_PRODUCTION_MODIFIER));
                 plan += _props[EntityType.House].InitialCost * buildHouseCount;
             }
+
             var isBuildBuilderBase = _bases.FirstOrDefault(b => b.EntityType == EntityType.BuilderBase).Id == 0
                                      && _players[_myIndex].Resource >=
                                      _props[EntityType.BuilderBase].InitialCost + plan;
@@ -517,18 +440,19 @@ namespace Aicup2020
             // build orders
             foreach (var builder in _builders)
             {
-                var nearEnemies = _enemyEntities.Where(e => IsEntityInRange(e, 20, builder.Position));
-
-                var dangerNearEnemy = nearEnemies.FirstOrDefault(e =>
-                {
-                    return (e.EntityType == EntityType.MeleeUnit && GetRange(e, builder) < 3)
-                           || ((e.EntityType == EntityType.RangedUnit || e.EntityType == EntityType.Turret)
-                               && GetRange(e, builder) < 9);
-                });
+                var battleEnemies = _enemyEntities.Where(e =>
+                    e.EntityType != EntityType.BuilderUnit && _props[e.EntityType].Attack.HasValue);
+                var nearEnemies = battleEnemies.Where(e => IsEntityInRange(e, 15, builder.Position));
+                
                 // run
-                if (dangerNearEnemy.Id > 0)
+                if (nearEnemies.Any(e =>
+                    (e.EntityType == EntityType.MeleeUnit && GetRange(e, builder) < 4) // danger zone to melee=3 1-range, 1-builderMove, 1-meleeMove
+                    || (e.EntityType == EntityType.RangedUnit && GetRange(e, builder) < 8) // danger zone to ranged =7 5-range 1-builderMove, 1-rangedMove
+                    || (e.EntityType == EntityType.Turret && GetRange(e, builder) < 7))) // danger zone to turret =6 5-range 1-builderMove
                 {
-                    var runPosition = GetPositionRunTo(builder, dangerNearEnemy);
+                    var runPosition = GetPositionRunTo(builder, builder); //todo fix
+
+
                     //var runPosition = new Vec2Int(0, 0);
                     result.EntityActions[builder.Id] = new EntityAction(
                         new MoveAction(runPosition, true, true),
@@ -586,9 +510,7 @@ namespace Aicup2020
                         && builder.Position.X > 15 // do not build turrets on back of base
                         && builder.Position.Y > 15
                         && _players[_myIndex].Resource >= plan + _props[EntityType.Turret].InitialCost
-                        // && _turrets.FirstOrDefault(t => GetRange(t, builder) <= MAX_TURRET_REMOTENESS).Id == 0)
-                        && _turrets.FirstOrDefault(t => IsEntityInRange(t, MAX_TURRET_REMOTENESS, builder.Position))
-                            .Id == 0)
+                        && !_turrets.Any(t => IsEntityInRange(t, MAX_TURRET_REMOTENESS, builder.Position)))
                     {
                         if (TrySetBuildOrder(result, builder, EntityType.Turret))
                         {
@@ -597,20 +519,117 @@ namespace Aicup2020
                             continue;
                         }
                     }
-                    
+                }
+                
+                // builders without building orders
+                _availableBuilders.Add(builder);
+            }
+
+            // repair soldiers
+            for (var i = _availableBuilders.Count - 1; i >= 0; i--)
+            {
+                var b = _availableBuilders[i];
+                var repairedSoldier = _soldiers.FirstOrDefault(s =>
+                    s.Health < _props[s.EntityType].MaxHealth
+                    && ((s.Position.X == b.Position.X - 1 && s.Position.Y == b.Position.Y)
+                        || (s.Position.X == b.Position.X + 1 && s.Position.Y == b.Position.Y)
+                        || (s.Position.X == b.Position.X && s.Position.Y == b.Position.Y - 1)
+                        || (s.Position.X == b.Position.X && s.Position.Y == b.Position.Y + 1))
+                );
+                if (repairedSoldier.Id > 0)
+                {
+                    result.EntityActions[b.Id] = new EntityAction(
+                        null,
+                        null,
+                        null,
+                        new RepairAction(repairedSoldier.Id));
+                    _availableBuilders.RemoveAt(i);
+                }
+            }
+
+            //repair buildings
+            foreach (var building in _allBuildings)
+            {
+                if (building.Health < _props[building.EntityType].MaxHealth)
+                {
+                    var size = _props[building.EntityType].Size;
+                    var offset = size / 2;
+                    for (var i = 0; i < size; i++)
+                    {
+                        // command nearest bilder to repair
+                        var builder = GetNearestEntity(_availableBuilders, building);
+                        if (builder.HasValue)
+                        {
+                            result.EntityActions[builder.Value.Id] = new EntityAction(
+                                new MoveAction(new Vec2Int(building.Position.X + offset, building.Position.Y + offset),
+                                    true, true),
+                                null,
+                                null,
+                                new RepairAction(building.Id));
+                            _availableBuilders.Remove(builder.Value);
+                        }
+                    }
+                }
+            }
+
+            // harvest
+            IEnumerable<Entity> allRes = new List<Entity>();
+            var allResCount = 0;
+            var range = 10;
+            while (allResCount < 10 && range < _mapSize)
+            {
+                allRes = _playerViewEntities.Where(res =>
+                    res.EntityType == EntityType.Resource && res.Position.X + res.Position.Y < range);
+                allResCount = allRes.Count();
+                range += 10;
+            }
+
+            // any resource with available place for builder
+            var availableRes = allRes.Where(r =>
+                (r.Position.X > 0 && !allRes.Any(edgeRes => edgeRes.Position.X == r.Position.X - 1 && edgeRes.Position.Y == r.Position.Y && r.Position.X > 0))
+                || (r.Position.X < _mapSize-1 && !allRes.Any(edgeRes => edgeRes.Position.X == r.Position.X + 1 && edgeRes.Position.Y == r.Position.Y && r.Position.X < _mapSize - 1))
+                || (r.Position.Y > 0 && !allRes.Any(edgeRes => edgeRes.Position.X == r.Position.X && edgeRes.Position.Y == r.Position.Y - 1 && r.Position.Y > 0))
+                || (r.Position.Y < _mapSize-1 && !allRes.Any(edgeRes => edgeRes.Position.X == r.Position.X && edgeRes.Position.Y == r.Position.Y + 1 && r.Position.Y < _mapSize - 1))
+            ).ToList();
+
+            var enemySoldiers = _enemyEntities.Where(enemy =>
+                enemy.EntityType == EntityType.Turret || enemy.EntityType == EntityType.MeleeUnit ||
+                enemy.EntityType == EntityType.RangedUnit).ToList();
+
+            for (var i = _availableBuilders.Count - 1; i >= 0; i--)
+            {
+                var b = _availableBuilders[i];
+
+                var resource = GetNearestEntity(availableRes.Where(res =>
+                    _builders.Count(b => IsEntityInRange(b, 1, res.Position)) < 2
+                    && !enemySoldiers.Any(enemy => IsEntityInRange(enemy, 10, res.Position))
+                ), b);
+
+                if (resource.HasValue)
+                {
+                    result.EntityActions[b.Id] = new EntityAction(
+                        new MoveAction(resource.Value.Position, true, true),
+                        null,
+                        new AttackAction(
+                            null,
+                            _builderAutoAttack
+                        ),
+                        null);
+                    availableRes.Remove(resource.Value);
+                }
+                else
+                {
+                    result.EntityActions[b.Id] = new EntityAction(
+                        new MoveAction(new Vec2Int(_mapSize / 2, _mapSize / 2), true, true),
+                        null,
+                        new AttackAction(
+                            null,
+                            _builderAutoAttack
+                        ),
+                        null);
                 }
 
-                //default harvest action
-                result.EntityActions[builder.Id] = new EntityAction(
-                    _defaultBuilderMoveAction,
-                    null,
-                    new AttackAction(
-                        null,
-                        _builderAutoAttack
-                    ),
-                    null
-                );
-                _availableBuilders.Add(builder);
+                _availableBuilders.RemoveAt(i);
             }
         }
 
@@ -637,45 +656,9 @@ namespace Aicup2020
             // var runPosition = new Vec2Int(runX, runY);
             // FixPositionOnMapEdge(ref runPosition);
             // return runPosition;
-            
             return new Vec2Int(0, 0);
-            
+
             // return _bases.FirstOrDefault().Position;
-        }
-
-        private void RepairBuildings(Action result)
-        {
-            // builders with only move action = runners
-            // var availableBuilders = _builders.Where(b =>
-            // {
-            //     var entityAction = result.EntityActions[b.Id];
-            //     return entityAction.AttackAction.HasValue
-            //            || entityAction.BuildAction.HasValue;
-            // }).ToList();
-
-            foreach (var building in _allBuildings)
-            {
-                if (building.Health < _props[building.EntityType].MaxHealth)
-                {
-                    var size = _props[building.EntityType].Size;
-                    var offset = size / 2;
-                    for (var i = 0; i < size; i++)
-                    {
-                        // command nearest bilder to repair
-                        var builder = GetNearestEntity(_availableBuilders, building);
-                        if (builder.HasValue)
-                        {
-                            result.EntityActions[builder.Value.Id] = new EntityAction(
-                                new MoveAction(new Vec2Int(building.Position.X + offset, building.Position.Y + offset),
-                                    true, true),
-                                null,
-                                null,
-                                new RepairAction(building.Id));
-                            _availableBuilders.Remove(builder.Value);
-                        }
-                    }
-                }
-            }
         }
 
         private bool IsGoodPosition(Vec2Int newBuildingPosition)
@@ -710,9 +693,12 @@ namespace Aicup2020
         private Player? GetPoweredEnemy(PlayerView playerView)
         {
             var maxScore = -1;
+
             // var maxEntitiesCount = -1;
             Player? poweredPlayer = null;
-            for (var i = 0; i < playerView.Players.Length; i++)
+            for (var i = 0;
+                i < playerView.Players.Length;
+                i++)
             {
                 if (i == _myIndex)
                 {
@@ -740,6 +726,7 @@ namespace Aicup2020
         {
             // 1 bottom, left -> right
             var size = _props[buildingType].Size;
+
             // var offset = new Vec2Int(-1 * size, -1 * size);
             var pos = new Vec2Int(builder.Position.X - size, builder.Position.Y - size);
 
@@ -830,13 +817,13 @@ namespace Aicup2020
                 && e.Position.X <= pos.X + size
                 && e.Position.Y <= pos.Y + size);
             if (anyBaseOnLeftBottomRange4.Id > 0) return false;
-
             return true;
         }
 
         private static Entity? GetNearestEntity(IEnumerable<Entity> entities, Entity targetEntity)
         {
             Entity? nearestBuilder = null;
+
             int range = 100000;
             foreach (var entity in entities)
             {
@@ -868,7 +855,6 @@ namespace Aicup2020
 
         public void DebugUpdate(PlayerView playerView, DebugInterface debugInterface)
         {
-            
             debugInterface.Send(new DebugCommand.Clear());
 
             // var enemies = playerView.Entities.Where(e => e.PlayerId.HasValue && e.PlayerId.Value != playerView.MyId);
@@ -878,7 +864,6 @@ namespace Aicup2020
             //     debugInterface.Send(new DebugCommand.Add(new DebugData.PlacedText(v,
             //         $"{enmy.Id} [{enmy.Position.X},{enmy.Position.Y}]", 0f, 12f)));
             // }
-
             if (IS_DEBUG)
             {
                 var offset = new Vec2Float(0f, 0.7f);
@@ -886,7 +871,7 @@ namespace Aicup2020
 
                 // 10x10 grid
                 var vertexes = new List<ColoredVertex>();
-                for (var i = 0; i < playerView.MapSize/10; i++)
+                for (var i = 0; i < playerView.MapSize / 10; i++)
                 {
                     // vertical line
                     var tenPow = i * 10;
@@ -899,7 +884,7 @@ namespace Aicup2020
 
                     debugInterface.Send(
                         new DebugCommand.Add(new DebugData.Primitives(vertexes.ToArray(), PrimitiveType.Lines)));
-                
+
                     debugInterface.Send(new DebugCommand.Add(
                         new DebugData.PlacedText(
                             new ColoredVertex(new Vec2Float(0, tenPow), offset, color),
@@ -910,20 +895,25 @@ namespace Aicup2020
                             new ColoredVertex(new Vec2Float(tenPow, 0), offset, color),
                             $"{tenPow}", 0f, 12f)));
                 }
-            
+
                 // show factory statuses
-                var bases = playerView.Entities.Where(e => e.EntityType == EntityType.BuilderBase 
-                                                           ||  e.EntityType == EntityType.MeleeBase 
-                                                           ||  e.EntityType == EntityType.RangedBase );
+                var bases = playerView.Entities.Where(e => e.EntityType == EntityType.BuilderBase
+                                                           || e.EntityType == EntityType.MeleeBase
+                                                           || e.EntityType == EntityType.RangedBase);
                 foreach (var factory in bases)
                 {
-                    if(!_baseProductionStatuses.ContainsKey(factory.Id)) continue;
+                    if (!_baseProductionStatuses.ContainsKey(factory.Id)) continue;
                     var status = _baseProductionStatuses[factory.Id] ? "ACTIVE" : "----";
                     debugInterface.Send(new DebugCommand.Add(
                         new DebugData.PlacedText(
-                            new ColoredVertex(new Vec2Float(factory.Position.X+2, factory.Position.Y+2), offset, color),
+                            new ColoredVertex(new Vec2Float(factory.Position.X + 2, factory.Position.Y + 2), offset,
+                                color),
                             $"{status}", 0f, 14f)));
                 }
+
+                //display resources
+                debugInterface.Send(new DebugCommand.Add(
+                    new DebugData.Log("res:" + playerView.Entities.Count(e => e.EntityType == EntityType.Resource))));
             }
 
             // var v1 = new ColoredVertex(new Vec2Float(1f,1f),offset,color );
@@ -932,7 +922,6 @@ namespace Aicup2020
             // var v4 = new ColoredVertex(new Vec2Float(5f,20f),offset,color);
             // var coloredVertices = new ColoredVertex[4] {v1, v2, v3, v4};
             // debugInterface.Send(new DebugCommand.Add(new DebugData.Primitives(coloredVertices,PrimitiveType.Lines )));
-
             var state = debugInterface.GetState();
         }
     }
