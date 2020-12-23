@@ -255,125 +255,66 @@ namespace Aicup2020
             return new Vec2Int(0, 0);
         }
 
-
         private void SetSoldiersOrders(Action result)
         {
-            //default soldier orders to autoattack
-            // target to enemy with hiest wisible entities
-            var enemyGroups = _enemyEntities.GroupBy(
-                e => e.PlayerId,
-                e => e,
-                (pId, entities) => new
-                {
-                    Key = pId,
-                    Count = entities.Count(),
-                });
-            var maxGroupCount = -1;
-            var targetPlayerId = -1;
-            foreach (var enemyGroup in enemyGroups)
+            var buildersPositions = _builders.Select(b =>
             {
-                if (enemyGroup.Count > maxGroupCount)
-                {
-                    maxGroupCount = enemyGroup.Count;
-                    targetPlayerId = enemyGroup.Key.Value;
-                }
-            }
+                var positionX = Convert.ToInt32(b.Position.X * 0.8f);
+                if (positionX > _mapSize - 1) positionX = _mapSize - 1;
+                var positionY = Convert.ToInt32(b.Position.Y * 0.8f);
+                if (positionY > _mapSize - 1) positionY = _mapSize - 1;
+                return new Vec2Int(positionX, positionY);
+            }).ToList();
+            buildersPositions.Add(new Vec2Int(10, 10)); // prevent 0 count
+            int positionIndex = 0;
 
-            var firstEnemy = _enemyEntities.FirstOrDefault(e => e.PlayerId == targetPlayerId);
 
-            Vec2Int targetPosition;
-            var bunchCounter1 = 0;
-            var bunchCounter2 = 0;
-            var isBunching = true;
-            if (_soldiers.Count() < GROUP_MIN || firstEnemy.Id < 1)
+            IEnumerable<Entity> enemies;
+            if (_soldiers.Count() < GROUP_MIN)
             {
-                targetPosition = bunchPosition1;
-                isBunching = true;
+                enemies = _enemyEntities.Where(e => IsEntityInRange(e, 30, new Vec2Int(0, 0)));
             }
             else
             {
-                targetPosition = firstEnemy.Position;
-                isBunching = false;
+                enemies = _enemyEntities;
             }
 
-            scoutStats = new bool[] {false, false, false};
-            var scoutIds = scouts.Select(s => s.Id).ToArray();
+            var targetEnemy = GetNearestEntity(enemies, _bases.FirstOrDefault());
 
-            foreach (var soldier in _soldiers)
+            var readySoldiers = _soldiers.Where(s => s.Health == _props[s.EntityType].MaxHealth
+                                                     || (s.Health < _props[s.EntityType].MaxHealth &&
+                                                         !_builders.Any(b => IsEntityInRange(b, 1, s.Position))));
+
+            foreach (var soldier in readySoldiers)
             {
-                var indexOf = Array.IndexOf(scoutIds, soldier.Id);
-                if (indexOf > -1)
+                Vec2Int targetPosition;
+
+                if (targetEnemy.HasValue == false)
                 {
-                    scoutStats[indexOf] = true; // steel alive
-                    result.EntityActions[soldier.Id] = new EntityAction(
-                        new MoveAction(
-                            enemyRespPositions[indexOf],
-                            true,
-                            true),
-                        null,
-                        new AttackAction(
-                            null,
-                            _unitAutoAttack
-                        ),
-                        null
-                    );
+                    targetPosition = buildersPositions[positionIndex];
+                    positionIndex += 1;
+                    if (positionIndex == buildersPositions.Count)
+                    {
+                        positionIndex = 0;
+                    }
                 }
                 else
                 {
-                    if (isBunching)
-                    {
-                        if (bunchCounter1 > bunchCounter2)
-                        {
-                            targetPosition = bunchPosition2;
-                            bunchCounter2 += 1;
-                        }
-                        else
-                        {
-                            targetPosition = bunchPosition1;
-                            bunchCounter1 += 1;
-                        }
-                    }
+                    targetPosition = targetEnemy.Value.Position;
+                }
 
-                    result.EntityActions[soldier.Id] = new EntityAction(
-                        new MoveAction(
-                            targetPosition,
-                            true,
-                            true),
+                result.EntityActions[soldier.Id] = new EntityAction(
+                    new MoveAction(
+                        targetPosition,
+                        true,
+                        true),
+                    null,
+                    new AttackAction(
                         null,
-                        new AttackAction(
-                            null,
-                            _unitAutoAttack
-                        ),
-                        null
-                    );
-                }
-            }
-
-            for (var i = 0; i < scoutStats.Length; i++)
-            {
-                if (scoutStats[i] == false)
-                {
-                    // new scout
-                    scouts[i] = new Entity();
-                    var candidat = _soldiers.FirstOrDefault(soldier => Array.IndexOf(scoutIds, soldier.Id) < 0);
-                    if (candidat.Id > 0)
-                    {
-                        scoutStats[i] = true;
-                        scouts[i] = candidat;
-                        result.EntityActions[candidat.Id] = new EntityAction(
-                            new MoveAction(
-                                enemyRespPositions[i],
-                                true,
-                                true),
-                            null,
-                            new AttackAction(
-                                null,
-                                _unitAutoAttack
-                            ),
-                            null
-                        );
-                    }
-                }
+                        _unitAutoAttack
+                    ),
+                    null
+                );
             }
 
             // range units run from meelee
@@ -386,12 +327,43 @@ namespace Aicup2020
                 if (dangerNearEnemy.Id > 0)
                 {
                     result.EntityActions[archer.Id] = new EntityAction(
-                        _defaultBuilderRunAction,
+                        new MoveAction(GetNearestEntity(_builders, archer)?.Position ?? new Vec2Int(0, 0), true, true),
                         null,
                         null,
                         null
                     );
                 }
+            }
+
+            foreach (var soldier in _soldiers)
+            {
+                if (soldier.Health <= _props[soldier.EntityType].MaxHealth / 2)
+                {
+                    result.EntityActions[soldier.Id] = new EntityAction(
+                        new MoveAction(GetNearestEntity(_builders, soldier)?.Position ?? new Vec2Int(0, 0), true, true),
+                        null,
+                        new AttackAction(
+                            null,
+                            _unitAutoAttack
+                        ),
+                        null
+                    );
+                    continue;
+                }
+
+                // if (_soldiers.Count(s => s.Id != soldier.Id && IsEntityInRange(s, 2, soldier.Position)) < 3)
+                // {
+                //     var nearComrad = GetNearestEntity(_soldiers.Where(s => s.Id != soldier.Id && IsEntityInRange(s, 10, soldier.Position)),soldier);
+                //     if (nearComrad.HasValue)
+                //     {
+                //         result.EntityActions[soldier.Id] = new EntityAction(
+                //             new MoveAction(nearComrad.Value.Position, true, true), 
+                //             null,
+                //             null,
+                //             null
+                //         );
+                //     }
+                // }
             }
         }
 
