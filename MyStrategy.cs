@@ -6,7 +6,6 @@ using Action = Aicup2020.Model.Action;
 
 namespace Aicup2020
 {
-
     public class MyStrategy
     {
         // private bool _isAccumulateResources;
@@ -20,6 +19,8 @@ namespace Aicup2020
         EntityType[] unitEntityTypes = {EntityType.BuilderUnit, EntityType.MeleeUnit, EntityType.RangedUnit};
 
         const int GROUP_MIN = 20;
+        const int GROUP_NORM = 10;
+
 
         const int MAX_TURRET_REMOTENESS = 6;
 
@@ -57,6 +58,15 @@ namespace Aicup2020
         const float HOUSE_PRODUCTION_MODIFIER = 0.02f; // HPM х population = houseCount to build in 1 tick 
         const float BUILDERS_MULTIPLIER = 1.2f; // BM * soldiers.Count = max_builders limit
         MapCell[,] _virtualMap;
+        private List<TacticalGroup> _tacticalGroups = new List<TacticalGroup>();
+        private List<StrategicPoint> _strategicPoints = new List<StrategicPoint>();
+        private List<Vec2Int> enemyBasePositions = new List<Vec2Int>();
+        private int _enemiesCount = 0;
+        private int _id = 1;
+
+
+
+
         public Action GetAction(PlayerView playerView, DebugInterface debugInterface)
         {
             var myId = playerView.MyId;
@@ -88,6 +98,7 @@ namespace Aicup2020
             SetTurretsAutoattack(result);
 
             // soldiers orders
+            // SetSoldiersOrders_1(result);
             SetSoldiersOrders(result);
 
             // build units
@@ -127,6 +138,16 @@ namespace Aicup2020
                     true);
                 _props = playerView.EntityProperties;
                 _virtualMap = new MapCell[_mapSize,_mapSize];
+                
+                var farCoord = _mapSize-5;
+                enemyBasePositions.Add(new Vec2Int(5, farCoord));
+                enemyBasePositions.Add(new Vec2Int(farCoord, 5));
+                enemyBasePositions.Add(new Vec2Int(farCoord, farCoord));
+                var notSoFarCoord = farCoord-5;
+                enemyBasePositions.Add(new Vec2Int(10, notSoFarCoord));
+                enemyBasePositions.Add(new Vec2Int(notSoFarCoord, 10));
+                enemyBasePositions.Add(new Vec2Int(notSoFarCoord, notSoFarCoord));
+
             }
         }
 
@@ -280,7 +301,7 @@ namespace Aicup2020
             return new Vec2Int(0, 0);
         }
 
-        private void SetSoldiersOrders(Action result)
+        private void SetSoldiersOrders_1(Action result)
         {
             // var buildersPositions = _builders.Select(b =>
             // {
@@ -297,8 +318,7 @@ namespace Aicup2020
             buildersPositions.Add(new Vec2Int(20, 20)); // prevent 0 count
             
             int positionIndex = 0;
-
-
+            
             IEnumerable<Entity> enemies;
             if (_soldiers.Count() < GROUP_MIN)
             {
@@ -396,6 +416,370 @@ namespace Aicup2020
                 // }
             }
         }
+
+        private void SetSoldiersOrders(Action result)
+        {
+            //update points each 10 ticks
+            // for (var i = 0; i < 3; i++)
+            // {
+            //     if (!_strategicPoints.Any(p => p.Position.X == enemyBasePositions[i].X && p.Position.Y == enemyBasePositions[i].Y)
+            //     &&!_strategicPoints.Any(p => p.Position.X == enemyBasePositions[i+2].X && p.Position.Y == enemyBasePositions[i+2].Y))
+            //     {
+            //         _strategicPoints.Add(new StrategicPoint(enemyBasePositions[i+2], GetId()));
+            //     }
+            // }
+            if (_strategicPoints.Count() < 1)
+            {
+                _strategicPoints.Add(new StrategicPoint(enemyBasePositions[_enemiesCount++], GetId()));
+            }
+
+            //check strategicPoints
+            // for (var i = _strategicPoints.Count - 1; i >= 0; i--)
+            // {
+            //     var strategicPoint = _strategicPoints[i];
+            //     if (!_enemyEntities.Any(e => IsEntityInRange(e, 7, strategicPoint.Position)))
+            //     {
+            //         _strategicPoints.RemoveAt(i);
+            //     }
+            // }
+
+            // _strategicPoints = _strategicPoints.Where(p => _enemyEntities.Any(e => IsEntityInRange(e, 7, p.Position))).ToList();
+            // if (!_strategicPoints.Any())
+            // {
+            //     // var basesQ = _enemyEntities.Where(e => e.EntityType == EntityType.BuilderBase
+            //     //                                        || e.EntityType == EntityType.MeleeBase
+            //     //                                        || e.EntityType == EntityType.RangedBase);
+            //     var basesQ = _enemyEntities.Where(e => e.EntityType == EntityType.BuilderUnit);
+            //
+            //     IEnumerable<StrategicPoint> bases;
+            //     if (_targetEnemy.HasValue)
+            //     {
+            //         bases = basesQ.Where(e => e.PlayerId == _targetEnemy.Value.Id)
+            //             .Select(e => new StrategicPoint(e.Position));
+            //     }
+            //     else
+            //     {
+            //         bases = basesQ.Select(e => new StrategicPoint(e.Position));
+            //     }
+            //
+            //     _strategicPoints.AddRange(bases);
+            //     if (_strategicPoints.Count() < 1)
+            //     {
+            //         foreach (var enemyBasePosition in enemyBasePositions)
+            //         {
+            //             _strategicPoints.Add(new StrategicPoint(enemyBasePosition));
+            //         }
+            //     }
+            // }
+
+            // update tactical groups
+            foreach (var tacticalGroup in _tacticalGroups)
+            {
+                tacticalGroup.Units = tacticalGroup.Units
+                    .Select(u => _soldiers.FirstOrDefault(s => s.Id == u.Id))
+                    .Where(u => u.Id > 0)
+                    .ToList();
+            }
+
+            for (var index = _tacticalGroups.Count - 1; index >= 0; index--)
+            {
+                // clear died
+                if (!_tacticalGroups[index].Units.Any())
+                {
+                    _tacticalGroups.RemoveAt(index);
+                    continue;
+                }
+
+                //targeting
+                var tacticalGroup = _tacticalGroups[index];
+                // if (tacticalGroup.Units.Count() < TACTICAL_GROUP_MIN)
+                // {
+                //     // back & reinforce
+                //     // if (tacticalGroup.Units.Any())
+                //     // {
+                //     //     tacticalGroup.TargetPosition =
+                //     //         GetNearestEntity(_builders, tacticalGroup.Units.First()).Value.Position;
+                //     // }
+                //     tacticalGroup.TargetPosition = new Vec2Int(15,15);
+                //     tacticalGroup.point = null;
+                //     continue;
+                // }
+                if (tacticalGroup.IsRecruting)
+                {
+                    // {
+                    //     tacticalGroup.TargetPosition =
+                    //         GetNearestEntity(_builders, tacticalGroup.Units.First()).Value.Position;
+                    // }
+
+                    // patrol on base
+                    // if (GetPositionsRange(tacticalGroup.CurrentPosition, tacticalGroup.TargetPosition) < 5)
+                    // {
+                    //     if (tacticalGroup.TargetPosition.X == 5)
+                    //     {
+                    //         tacticalGroup.TargetPosition = new Vec2Int(20, 10);
+                    //     }
+                    //     else
+                    //     {
+                    //         tacticalGroup.TargetPosition = new Vec2Int(10, 20);
+                    //     }
+                    // }
+                }
+                else
+                {
+                    if (tacticalGroup.point == null)
+                    {
+                        var targetPoint = SelectNewStrategicPoint(tacticalGroup.CurrentPosition);
+                        tacticalGroup.point = targetPoint;
+                        continue;
+                    }
+                    else
+                    {
+                        //check actual point
+                        if (!_strategicPoints.Any(p => p.Id == tacticalGroup.point.Id))
+                        {
+                            tacticalGroup.point = SelectNewStrategicPoint(tacticalGroup.CurrentPosition);
+                        }
+                        else
+                        {
+                            if (IsPointInRangeOfBasePoint(tacticalGroup.CurrentPosition, 5,
+                                tacticalGroup.point.Position))
+                            {
+                                // var defatulBasePosition = enemyBasePositions.FirstOrDefault(basePosition =>
+                                //     basePosition.X == tacticalGroup.point.Position.X &&
+                                //     basePosition.Y == tacticalGroup.point.Position.Y);
+                                // if (defatulBasePosition.X != 0 || defatulBasePosition.Y != 0)
+                                // {
+                                //     enemyBasePositions.Remove(defatulBasePosition);
+                                // }
+                                _strategicPoints.Remove(tacticalGroup.point);
+                                tacticalGroup.point = SelectNewStrategicPoint(tacticalGroup.CurrentPosition);
+                            }
+                        }
+
+                        // && (tacticalGroup.point.IsCaptured || IsPointInRangeOfBasePoint(tacticalGroup.CurrentPosition, 7, tacticalGroup.point.Position)))
+                        // tacticalGroup.point.IsCaptured = true;
+                    }
+                }
+            }
+
+            // reinforcements
+            var ungrouped = _soldiers.Where(s => !_tacticalGroups.Any(g => g.Units.Any(u => u.Id == s.Id))).ToList();
+
+            if (ungrouped.Any())
+            {
+                foreach (var tacticalGroup in _tacticalGroups.Where(g => g.IsRecruting))
+                {
+                    for (var i = ungrouped.Count() - 1; i > -1; i--)
+                    {
+                        tacticalGroup.Units.Add(ungrouped[i]);
+                        ungrouped.RemoveAt(i);
+                        if (tacticalGroup.Units.Count() >= GROUP_NORM)
+                        {
+                            tacticalGroup.IsRecruting = false;
+                            break;
+                        }
+                    }
+                }
+
+                //new groups from ungrouped
+                if (ungrouped.Any())
+                {
+                    var group = new TacticalGroup($"G{GetId()}");
+                    _tacticalGroups.Add(group);
+                    for (var i = ungrouped.Count() - 1; i > -1; i--)
+                    {
+                        group.Units.Add(ungrouped[i]);
+                        ungrouped.RemoveAt(i);
+                        if (group.Units.Count() >= GROUP_NORM)
+                        {
+                            group.IsRecruting = false;
+                            group = new TacticalGroup($"G{GetId()}");
+                            _tacticalGroups.Add(group);
+                        }
+                    }
+                }
+            }
+
+            foreach (var tacticalGroup in _tacticalGroups)
+            {
+                MoveGroup(result, tacticalGroup);
+            }
+        }
+
+        private StrategicPoint SelectNewStrategicPoint(Vec2Int position)
+        {
+            var points = _strategicPoints.Where(p => !_tacticalGroups.Any(g => g.point == p));
+            StrategicPoint targetPoint = _strategicPoints.FirstOrDefault();
+            var minPointGroupsCount = 100;
+            var minRange = 1000;
+            foreach (var point in points)
+            {
+                // var pointGroups = _tacticalGroups.Count(g => g.point == point);
+                var range = GetRange2(point.Position, position);
+                // if (pointGroups < minPointGroupsCount)
+                // {
+                //     minPointGroupsCount = pointGroups;
+                //     targetPoint = point;
+                // }
+                if (range < minRange)
+                {
+                    minRange = range;
+                    targetPoint = point;
+                }
+            }
+
+            return targetPoint;
+        }
+
+        private void MoveGroup(Action result, TacticalGroup tGroup)
+        {
+            if (!tGroup.Units.Any())
+                return;
+            bool isMoveBack = false;
+            //current group position
+            tGroup.CurrentPosition = new Vec2Int(
+                Convert.ToInt32(tGroup.Units.Average(u => u.Position.X)),
+                Convert.ToInt32(tGroup.Units.Average(u => u.Position.Y))
+            );
+            if (!tGroup.IsRecruting)
+            {
+                if (tGroup.point != null)
+                {
+                    tGroup.TargetPosition = tGroup.point.Position;
+                }
+                else
+                {
+                    tGroup.TargetPosition = tGroup.CurrentPosition;
+                }
+            }
+            else
+            {
+                tGroup.TargetPosition = new Vec2Int(15, 15);
+            }
+
+            // new units position
+            // var nearEnemies = _enemyEntities.Where(e =>
+            //     IsEntityInRange(e, 15, tGroup.CurrentPosition)
+            //     && (e.EntityType == EntityType.Turret
+            //         || e.EntityType == EntityType.MeleeUnit
+            //         || e.EntityType == EntityType.RangedUnit));
+
+            // Vec2Int movePosition;
+            // if (nearEnemies.Count() > tGroup.Units.Count())
+            // {
+            // move back
+            // movePosition = new Vec2Int(
+            //     (0 - tGroup.CurrentPosition.X) / 2 + tGroup.CurrentPosition.X,
+            //     (0 - tGroup.CurrentPosition.Y) / 2 + tGroup.CurrentPosition.Y
+            // );
+            // tGroup.TargetPosition = new Vec2Int(15,15);
+            // isMoveBack = true;
+            // }
+            // else
+            // {
+            //     movePosition = new Vec2Int(
+            //         (tGroup.TargetPosition.X - tGroup.CurrentPosition.X) / 2 + tGroup.CurrentPosition.X,
+            //         (tGroup.TargetPosition.Y - tGroup.CurrentPosition.Y) / 2 + tGroup.CurrentPosition.Y
+            //     );
+            // }
+            int? targetEnemyId = null;
+            AutoAttack? autoattack = null;
+            // autoattack = _unitAutoAttack;
+            // var enemiesInRange = _enemyEntities.Where(e =>
+            //     (e.EntityType == EntityType.Turret || e.EntityType == EntityType.MeleeUnit ||
+            //      e.EntityType == EntityType.RangedUnit) &&
+            //     IsPointInRangeOfBasePoint(e.Position, 15, tGroup.CurrentPosition));
+            // var enemiesInRange = _enemyEntities.Where(e => IsPointInRangeOfBasePoint(e.Position, 20, tGroup.CurrentPosition));
+            // if (enemiesInRange.Count() > tGroup.Units.Count())
+            // {
+            //     isMoveBack = true;
+            //     tGroup.TargetPosition = new Vec2Int(15, 15);
+            // }
+            // else
+            // {
+                // if (enemiesInRange.Count() > 0)
+                // {
+                //     var targetEnemy = GetNearestEntityToPosition(enemiesInRange, tGroup.CurrentPosition);
+                //     targetEnemyId = targetEnemy.Id;
+                //     tGroup.TargetPosition = targetEnemy.Position;
+                // }
+                // else
+                // {
+                //     autoattack = _unitAutoAttack;
+                // }
+            // }
+
+            foreach (var unit in tGroup.Units)
+            {
+                int count = 0;
+                EntityAction entityAction;
+                // if (_myEntities.Count(s => IsEntityInRange(s, 3, unit.Position)) < 3)
+                // {
+                //     entityAction = new EntityAction(
+                //         null,
+                //         null,
+                //         new AttackAction(
+                //             null,
+                //             _unitAutoAttack
+                //         ),
+                //         null
+                //     );
+                // }
+                // else
+                // {
+
+                entityAction = new EntityAction(
+                    new MoveAction(
+                        tGroup.TargetPosition,
+                        // new Vec2Int(tGroup.TargetPosition.X + count, tGroup.TargetPosition.Y + count),
+                        true,
+                        true),
+                    null,
+                    new AttackAction(
+                        // targetEnemyId,
+                        null,
+                        // autoattack
+                        _unitAutoAttack
+                    ),
+                    null
+                );
+                // count += 1;
+                // }
+
+                // run if hot 
+                // var runAction = new MoveAction(tGroup.CurrentPosition, true, true);
+                var runAction = _defaultBuilderRunAction;
+                switch (unit.EntityType)
+                {
+                    case EntityType.RangedUnit:
+                    {
+                        if (_enemyEntities.Any(e => e.EntityType == EntityType.MeleeUnit && GetRange(e, unit) < 4))
+                        {
+                            entityAction = new EntityAction(runAction, null, null, null);
+                        }
+
+                        break;
+                    }
+                    case EntityType.MeleeUnit:
+                    {
+                        // if (_enemyEntities.Count(e =>
+                        //         (e.EntityType == EntityType.MeleeUnit || e.EntityType == EntityType.Turret ||
+                        //          e.EntityType == EntityType.RangedUnit)
+                        //         && IsEntityInRange(e, 15, unit.Position)) >
+                        //     _myEntities.Count(s => IsEntityInRange(s, 4, unit.Position)))
+                        // if(GetPositionsRange(unit.Position, tGroup.CurrentPosition)>15)
+                        // {
+                        //     entityAction = new EntityAction(runAction, null, null, null);
+                        // }
+
+                        break;
+                    }
+                }
+
+                result.EntityActions[unit.Id] = entityAction;
+            }
+        }
+
 
         private void SetTurretsAutoattack(Action result)
         {
@@ -1263,6 +1647,20 @@ namespace Aicup2020
                 || entity.Position.Y < basePos.Y - range) return false;
             return true;
         }
+        
+        private static bool IsPointInRangeOfBasePoint(Vec2Int targetPoint, int range, Vec2Int basePos)
+        {
+            if (targetPoint.X > basePos.X + range
+                || targetPoint.Y > basePos.Y + range
+                || targetPoint.X < basePos.X - range
+                || targetPoint.Y < basePos.Y - range) return false;
+            return true;
+        }
+
+        public int GetId()
+        {
+            return _id++;
+        }
 
         public void DebugUpdate(PlayerView playerView, DebugInterface debugInterface)
         {
@@ -1325,6 +1723,39 @@ namespace Aicup2020
                 //display resources
                 debugInterface.Send(new DebugCommand.Add(
                     new DebugData.Log("res:" + playerView.Entities.Count(e => e.EntityType == EntityType.Resource))));
+                
+                // show groups position
+                foreach (var group in _tacticalGroups)
+                {
+                    foreach (var unit in group.Units)
+                    {
+                        debugInterface.Send(new DebugCommand.Add(
+                            new DebugData.PlacedText(
+                                new ColoredVertex(new Vec2Float(unit.Position.X, unit.Position.Y), offset, color),
+                                $"{group.Name}", 0f, 14f)));
+                    }
+
+                    var vertexes1 = new ColoredVertex[2]
+                    {
+                        new ColoredVertex(new Vec2Float(group.CurrentPosition.X, group.CurrentPosition.Y), offset, color),
+                        new ColoredVertex(new Vec2Float(group.TargetPosition.X, group.TargetPosition.Y), offset, color),
+                    };
+                    debugInterface.Send(new DebugCommand.Add(new DebugData.Primitives(
+                        vertexes1,
+                        PrimitiveType.Lines )));
+                }
+                
+                // show strategicPoints
+                var count = 0;
+                foreach (var point in _strategicPoints)
+                {
+                    debugInterface.Send(new DebugCommand.Add(
+                        new DebugData.PlacedText(
+                            new ColoredVertex(new Vec2Float(point.Position.X, point.Position.Y), offset, color),
+                            $"TARGET_{count}", 0f, 14f)));
+                    count += 1;
+                }
+
             }
 
             // var v1 = new ColoredVertex(new Vec2Float(1f,1f),offset,color );
