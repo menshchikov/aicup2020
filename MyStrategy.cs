@@ -56,7 +56,7 @@ namespace Aicup2020
         private Dictionary<int,BuildingPlan> _buildingOrders = new Dictionary<int, BuildingPlan>();
         const float HOUSE_PRODUCTION_MODIFIER = 0.02f; // HPM х population = houseCount to build in 1 tick 
         const float BUILDERS_MULTIPLIER = 1.2f; // BM * soldiers.Count = max_builders limit
-        bool[,] _virtualMap;
+        MapCell[,] _virtualMap;
         public Action GetAction(PlayerView playerView, DebugInterface debugInterface)
         {
             var myId = playerView.MyId;
@@ -126,7 +126,7 @@ namespace Aicup2020
                     true,
                     true);
                 _props = playerView.EntityProperties;
-                _virtualMap = new bool[_mapSize,_mapSize];
+                _virtualMap = new MapCell[_mapSize,_mapSize];
             }
         }
 
@@ -879,10 +879,10 @@ namespace Aicup2020
             }
 
             var availableRes = allRes.Where(r =>
-                (r.Position.X > 0 && _virtualMap[r.Position.X - 1, r.Position.Y] == false)
-                || (r.Position.X < _mapSize-1 && _virtualMap[r.Position.X + 1, r.Position.Y] == false)
-                || (r.Position.Y > 0 && _virtualMap[r.Position.X, r.Position.Y-1] == false)
-                || (r.Position.Y < _mapSize-1 && _virtualMap[r.Position.X, r.Position.Y+1] == false)
+                (r.Position.X > 0 && _virtualMap[r.Position.X - 1, r.Position.Y].isEmpty)
+                || (r.Position.X < _mapSize-1 && _virtualMap[r.Position.X + 1, r.Position.Y].isEmpty)
+                || (r.Position.Y > 0 && _virtualMap[r.Position.X, r.Position.Y-1].isEmpty)
+                || (r.Position.Y < _mapSize-1 && _virtualMap[r.Position.X, r.Position.Y+1].isEmpty)
             ).ToList();
 
             var enemySoldiers = _enemyEntities.Where(enemy =>
@@ -953,7 +953,8 @@ namespace Aicup2020
                 var x_counter = 0;
                 while (x_counter < _props[entityType].Size)
                 {
-                    _virtualMap[position.X + x_counter, position.Y + y_counter] = true;
+                    _virtualMap[position.X + x_counter, position.Y + y_counter].isEmpty = false;
+                    _virtualMap[position.X + x_counter, position.Y + y_counter].entityType = entityType;
                     x_counter += 1;
                 }
 
@@ -969,7 +970,7 @@ namespace Aicup2020
                 var x = 0;
                 while (x < _mapSize)
                 {
-                    _virtualMap[x, y] = false;
+                    _virtualMap[x, y].isEmpty = true;
                     x += 1;
                 }
                 y += 1;
@@ -1197,11 +1198,22 @@ namespace Aicup2020
                 var x = pos.X == 0 ? 0 : -1;
                 while (x < maxX)
                 {
-                    if (_virtualMap[pos.X + x, pos.Y + y])
+                    var mapCell = _virtualMap[pos.X+x, pos.Y+y];
+                    if (mapCell.isEmpty)
                     {
-                        return false;
+                        x += 1;
+                        continue;
                     }
-                    x += 1;
+                    
+                    if (x == -1 || x == size + 1 || y == -1 || y == size + 1)
+                    {
+                        if (mapCell.entityType == EntityType.Resource || _props[mapCell.entityType].CanMove)
+                        {
+                            x += 1;
+                            continue;
+                        }
+                    }
+                    return false;
                 }
                 y += 1;
             }
